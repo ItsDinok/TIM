@@ -122,7 +122,7 @@ def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
     model = TaskEstimationGate(BasicBlock, [5, 5, 5], num_tasks = tasks).to(device)
 
     print("Training task estimation gate")
-    optimiser = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+    optimiser = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=200)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     
@@ -220,6 +220,14 @@ class GatedResNet(nn.Module):
         new_linear.bias.data[:out_features] = old_linear.bias.data
 
         self.heads["fallback"] = new_linear
+
+    def freeze_layers(self, layers = None):
+        if layers is None:
+            layers = ["conv1", "bn1", "layer1", "layer2"]
+
+        for name, param in self.named_parameters():
+            if any(name.startswith(layer) for layer in layers):
+                param.requires_grad = False
 
 
 def GatedResNet32(task_dict):

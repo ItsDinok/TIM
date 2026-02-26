@@ -10,6 +10,7 @@ import basic_gate
 import os
 import pickle
 import gate_preprocessing
+import random
 
 
 def evaluate(model, teg, dataloader, criterion, device = "cuda"):
@@ -82,10 +83,9 @@ def train_model(model, teg, n_tasks, device, train_tasks, test_tasks):
     """
     Create and train the Gated ResNet32
     """
-    optimiser = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=200)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    
+    replay_buffer = {}
+    buffer_size_per_task = 200 # Tweakable
+
     for task_id, train_task in enumerate(train_tasks):
         print(f"\n=== Training Task {task_id + 1}/{n_tasks} ===")
         trainloader = DataLoader(
@@ -97,18 +97,51 @@ def train_model(model, teg, n_tasks, device, train_tasks, test_tasks):
             prefetch_factor = 4
         )
        
-        # Train task for 200 epochs
-        for epoch in range(200):
+        if task_id > 0:
+            model.freeze_layers()
+            model.expand_fallback_head(len(train_task.dataset.classes))
+
+        optimiser = optim.SGD(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr = 0.1, momentum = 0.9, weight_decay = 5e-4
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=200)
+        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+
+        # Train task for 100 epochs
+        for epoch in range(50):
             model.train()
             for inputs, targets in trainloader:
                 inputs, targets = inputs.to(device), targets.to(device)
-                
+               
+                # Replay buffer antics
+                if replay_buffer:
+                    replay_inputs = []
+                    replay_targets = []
+                    for prev_task_id, samples in replay_buffer.items():
+                        idx = np.random.choice(len(samples), size = 32, replace = False)
+                        for i in idx:
+                            replay_inputs.append(samples[i][0])
+                            replay_targets.append(samples[i][1])
+                    if replay_inputs:
+                        replay_inputs = torch.stack(replay_inputs).to(device)
+                        replay_targets = torch.tensor(replay_targets).to(device)
+                        # Concatenate with current branch
+                        inputs = torch.cat([inputs, replay_inputs], dim = 0)
+                        targets = torch.cat([targets, replay_targets], dim = 0)
+
                 optimiser.zero_grad()
                 outputs = model(inputs, task = task_id)
                 loss = criterion(outputs, targets)
                 loss.backward()
                 optimiser.step()
             scheduler.step()
+        
+        # Store samples in buffer
+        all_samples = [(x, y) for x, y in train_task]
+        if len(all_samples) > buffer_size_per_task:
+            all_samples = random.sample(all_samples, buffer_size_per_task)
+        replay_buffer[task_id] = all_samples
 
         evaluate_tasks(model, teg, test_tasks, criterion, task_id)
 
