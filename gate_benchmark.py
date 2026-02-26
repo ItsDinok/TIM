@@ -78,7 +78,7 @@ def evaluate(model, teg, dataloader, criterion, device = "cuda"):
 
 
 # TODO: Move this to the gate file
-def train_model(model, teg, n_tasks, device, train_data, test_data):
+def train_model(model, teg, n_tasks, device, train_tasks, test_tasks):
     """
     Create and train the Gated ResNet32
     """
@@ -110,10 +110,10 @@ def train_model(model, teg, n_tasks, device, train_data, test_data):
                 optimiser.step()
             scheduler.step()
 
-        evaluate_tasks(model, teg, test_tasks, criterion)
+        evaluate_tasks(model, teg, test_tasks, criterion, task_id)
 
 
-def evaluate_tasks(model, teg, test_tasks, criterion):
+def evaluate_tasks(model, teg, test_tasks, criterion, task_id):
     # Evaluate on all seen tasks
     model.eval()
     for prev_task_id in range(task_id + 1):
