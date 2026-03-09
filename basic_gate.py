@@ -46,19 +46,19 @@ class BasicBlock(nn.Module):
 
 
 class TaskEstimationGate(nn.Module):
-    def __init__(self, block, num_blocks, num_tasks = 10):
+    def __init__(self, block, num_blocks, num_tasks = 20):
         """
         num_tasks: Number of tasks in the output head
         """
         super().__init__()
-        self.in_planes = 16
-        self.feature_dim = 64 * block.expansion
+        self.in_planes = 64
+        self.feature_dim = 256 * block.expansion
 
-        self.conv1 = nn.Conv2d(3, 16, kernel_size = 3, stride = 1, padding = 1, bias = False)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride = 1)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride = 2)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride = 2)
+        self.conv1 = nn.Conv2d(3, 64, kernel_size = 3, stride = 1, padding = 1, bias = False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride = 1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride = 2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride = 2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(self.feature_dim, num_tasks)
 
@@ -117,20 +117,22 @@ def evaluate_teg(teg, dataloader, device = "cuda"):
     return accuracy
             
 
-
 def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
-    model = TaskEstimationGate(BasicBlock, [5, 5, 5], num_tasks = tasks).to(device)
+    model = TaskEstimationGate(BasicBlock, [6, 6, 6], num_tasks = tasks).to(device)
+
+    trainloader = DataLoader(train_data, batch_size = 512, shuffle = True, num_workers = 4, pin_memory = True)
+    testloader = DataLoader(test_data, batch_size = 512, shuffle = False, num_workers = 3, pin_memory = True)
+    steps_per_epoch = len(trainloader)
 
     print("Training task estimation gate")
-    optimiser = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=200)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     
-    trainloader = DataLoader(train_data, batch_size = 512, shuffle = True, num_workers = 4, pin_memory = True, prefetch_factor = 4)
-    testloader = DataLoader(test_data, batch_size = 512, shuffle = False, num_workers = 3, pin_memory = True, prefetch_factor = 4)
-
+    optimiser = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimiser, max_lr=0.1,
+        steps_per_epoch = steps_per_epoch, epochs = 200)
+    criterion = nn.CrossEntropyLoss()
+    
     # Train for 200 epochs on this task
-    for epoch in range(50):
+    for epoch in range(200):
         model.train()
         for inputs, targets in trainloader:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -140,8 +142,9 @@ def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
             loss = criterion(outputs, targets)
             loss.backward()
             optimiser.step()
-        scheduler.step()
-    
+            scheduler.step()
+        print(f"Completed epoch {epoch} out of 200.")
+
     print("Task estimation gate trained")
     print("TEG accuracy:", evaluate_teg(model, testloader)) 
 

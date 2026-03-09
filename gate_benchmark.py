@@ -109,7 +109,7 @@ def train_model(model, teg, n_tasks, device, train_tasks, test_tasks):
         criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
         # Train task for 100 epochs
-        for epoch in range(50):
+        for epoch in range(200):
             model.train()
             for inputs, targets in trainloader:
                 inputs, targets = inputs.to(device), targets.to(device)
