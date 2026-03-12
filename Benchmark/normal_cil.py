@@ -338,7 +338,7 @@ def train_task(model, loader, batch_size, epochs, lr, device = "cuda"):
 
                 x = torch.cat((x_new, x_old), dim = 0)
                 y = torch.cat((y_new, y_old), dim = 0)
-                replay_iter = iter(replay_loader) # shuffle replay loader
+                # replay_iter = iter(replay_loader) # shuffle replay loader
             else:
                 x = x_new
                 y = y_new
