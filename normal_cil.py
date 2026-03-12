@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.datasets import CIFAR10
-from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, Subset
 import torchvision.transforms as transforms
 import copy
 import numpy as np
@@ -104,7 +104,7 @@ class IncrementalResNet(nn.Module):
 
     def increment_classes(self, n_new):
         """
-        Expand classifier to accomodate new classes
+        Expand classifier to accommodate new classes
         """
         old_weights = None
 
@@ -119,27 +119,6 @@ class IncrementalResNet(nn.Module):
 
         self.classifier = new_classifier
         self.seen_classes = new_classes
-
-    def compute_lwf_loss(self, inputs, targets, temperature = 2.0, alpha = 0.1):
-        """
-        Compute lfw loss
-        """
-        # Current predictions
-        logits = self.forward(inputs)
-        ce_loss = F.cross_entropy(logits, targets)
-
-        if self.old_model is None:
-            return ce_loss
-
-        # Old model predictions
-        with torch.no_grad():
-            old_logits = self.old_model.forward(inputs)
-            old_probs = F.softmax(old_logits / temperature, dim = 1)
-
-        # Distillation loss
-        kd_loss = F.kl_div(F.log_softmax(logits[:, :old_logits.size(1)] / temperature, dim = 1),
-                           old_probs, reduction = "batchmean") * (temperature ** 2)
-        return alpha * ce_loss + (1 - alpha) * kd_loss
 
     def set_old_model(self):
         """
@@ -189,7 +168,6 @@ class IncrementalResNet(nn.Module):
             features_all.append(f.cpu())
             labels_all.append(y)
         features_all = torch.cat(features_all)
-        labels_all = torch.cat(labels_all)
 
         new_images = []
         new_labels = []
@@ -267,7 +245,7 @@ class IncrementalResNet(nn.Module):
                 mean = feats.mean(0)
                 mean = F.normalize(mean, dim = 0)
 
-                class_mean[cls] = mean
+                class_means[cls] = mean
 
         return class_means
 
@@ -335,6 +313,8 @@ def train_task(model, loader, batch_size, epochs, lr, device = "cuda"):
         new_iter = iter(loader)
         if replay_loader is not None:
             replay_iter = iter(replay_loader)
+        else:
+            replay_iter = None
         
         while True:
             try:
@@ -346,7 +326,7 @@ def train_task(model, loader, batch_size, epochs, lr, device = "cuda"):
             y_new = y_new.to(device)
 
             # Combine with replay batch
-            if replay_loader is not None:
+            if replay_loader is not None and replay_iter is not None:
                 try:
                     x_old, y_old = next(replay_iter)
                 except StopIteration:
@@ -430,11 +410,13 @@ def build_tasks(num_tasks = 10, classes_per_task = 10):
         start = task_id * classes_per_task
         end = start + classes_per_task
 
+        # noinspection PyTypeChecker
         train_indices = [
             i for i, (_, y) in enumerate(train_dataset)
             if start <= y < end
         ]
 
+        # noinspection PyTypeChecker
         test_indices = [
             i for i, (_, y) in enumerate(test_dataset)
             if start <= y < end

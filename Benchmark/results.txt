@@ -1,0 +1,11 @@
+Benchmark with LwF and iCaRL:
+
+========== RESULTS ==========
+Accuracy Matrix:
+ [[0.9855 0.     0.     0.     0.    ]
+ [0.926  0.753  0.     0.     0.    ]
+ [0.8865 0.232  0.9265 0.     0.    ]
+ [0.8505 0.162  0.422  0.979  0.    ]
+ [0.469  0.2685 0.499  0.8625 0.9715]]
+Backward Transfer (BwT): -0.38625
+Forward Transfer (FwT): 0.0
