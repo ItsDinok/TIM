@@ -139,7 +139,7 @@ class IncrementalResNet(nn.Module):
         # Distillation loss
         kd_loss = F.kl_div(F.log_softmax(logits[:, :old_logits.size(1)] / temperature, dim = 1),
                            old_probs, reduction = "batchmean") * (temperature ** 2)
-        return alpha * ce_loss + (1 - alpha) * kd_loss`
+        return alpha * ce_loss + (1 - alpha) * kd_loss
 
     def set_old_model(self):
         """
