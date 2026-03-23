@@ -1,0 +1,197 @@
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+import torch
+from torch.utils.data import Dataset, Subset
+from torchvision import datasets, transforms
+
+TASKS: Dict[int, List[int]] = {
+    0: [6, 9, 0],
+    1: [2, 5, 7],
+    2: [3, 8, 4]
+}
+
+DROPPED = {1}
+
+@dataclass
+class TaskDatasetBundle:
+    task_id: int
+    train: Dataset
+    test: Dataset
+    classes: List[int]
+    class_to_global_label: Dict[int, int]
+    class_to_local_label: Dict[int, int]
+
+class RemappedSubset(Dataset):
+    """
+    A subset wrapper that remaps labels.
+
+    Useful for:
+    - Local task labels: [6, 9, 0] -> [1, 2, 3]
+    - global contiguous labels: all classes -> [0 ... 8]
+    """
+    def __init__(self, base_dataset: Dataset, indices: List[int], label_map: Dict[int, int]):
+        self.base_dataset = base_dataset
+        self.indices = indices
+        self.label_map = label_map
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx: int):
+        x, y = self.base_dataset[self.indices[idx]]
+        return x, self.label_map[int(y)]
+
+
+def _get_targets(dataset: Dataset) -> torch.Tensor:
+    """
+    Extract targets from torchvision MNIST dataset as a tensor
+    """
+    if hasattr(dataset, "targets"):
+        targets = dataset.targets
+        if isinstance(targets, list):
+            return torch.tensor(targets)
+        return targets.clone() if isinstance(targets, torch.Tensor) else torch.tensor(targets)
+
+    raise AttributeError("Dataset does not expose a .targets attribute.")
+
+
+def _make_global_label_map(tasks: Dict[int, List[int]]) -> Dict[int, int]:
+    """
+    Build continuous global label map across all kept classes.
+
+    Example:
+        digits used = [0, 2, 3, 4, 5, 6, 7, 8, 9]
+        map -> {0:0, 2:1, 3:2, 4:3, 5:4, 6:5, 7:6, 8:7, 9:0}
+    """
+    all_classes = sorted({c for cls_list in tasks.values() for c in cls_list})
+    return {original_class: new_label for new_label, original_class in enumerate(all_classes)}
+
+
+def _filter_indices_by_classes(dataset: Dataset, allowed_classes: List[int]) -> List[int]:
+    """
+    Return dataset indices whose labels belong to allowed classes.
+    """
+    targets = _get_targets(dataset)
+    mask = torch.zeros_like(targets, dtype=torch.bool)
+    for c in allowed_classes:
+        mask |= (targets == c)
+    return torch.where(mask)[0].tolist()
+
+
+def build_mnist_cil_tasks(
+        root: str = "./data",
+        use_local_labels: bool = False,
+        train_transform = None,
+        test_transform = None,
+        download: bool = True,
+) -> Tuple[List[TaskDatasetBundle], Dict[int, int]]:
+    """
+    Build MNIST class-incrmeental learning tasks
+    Args:
+        root: dataset root directory
+        use_local_labels:
+            - False -> labels globally remapped across all kept classes
+            - True -> labels are local within each task
+        train_transform: transform for train split
+        test_transform: transform for test split
+        download: whether to download MNIST if needed
+
+    Returns:
+        task_bundles: list of TaskDatasetBundle
+        global_label_map: mapping from original digit -> contiguous global labels
+    """
+    if train_transform is None:
+        train_transform = transforms.ToTensor()
+    if test_transform is None:
+        test_transform = transforms.ToTensor()
+
+    train_dataset = datasets.MNIST(
+        root = root,
+        train = True,
+        download = download,
+        transform = train_transform
+    )
+
+    test_dataset = datasets.MNIST(
+        root = root,
+        train = False,
+        download = download,
+        transform = test_transform
+    )
+
+    global_label_map = _make_global_label_map(tasks=TASKS)
+    task_bundles: List[TaskDatasetBundle] = []
+
+    for task_id, classes in TASKS.items():
+        train_indices = _filter_indices_by_classes(train_dataset, classes)
+        test_indices = _filter_indices_by_classes(test_dataset, classes)
+
+        local_label_map = {original_class: i for i, original_class in enumerate(classes)}
+
+        if use_local_labels:
+            label_map = local_label_map
+        else:
+            label_map = {c: global_label_map[c] for c in classes}
+
+        task_train = RemappedSubset(train_dataset, train_indices, label_map)
+        task_test = RemappedSubset(test_dataset, test_indices, label_map)
+
+        task_bundles.append(
+            TaskDatasetBundle(
+                task_id = task_id,
+                train = task_train,
+                test = task_test,
+                classes = classes,
+                class_to_global_label = {c: global_label_map[c] for c in classes},
+                class_to_local_label = local_label_map
+            )
+        )
+
+    return task_bundles, global_label_map
+
+
+def get_task_class_sequence() -> List[List[int]]:
+    """
+    Returns the original digit classes per task
+    """
+    return [TASKS[i] for i in sorted(TASKS.keys())]
+
+
+def get_all_kept_classes() -> List[int]:
+    """
+    Returns all classes used across tasks, excluding dropped ones
+    """
+    return sorted({c for cls in TASKS.values() for c in cls if c not in DROPPED})
+
+
+if __name__ == "__main__":
+    train_transform = transforms.Compose([
+        transforms.RandomCrop(28, padding = 2),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
+
+    test_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,))
+    ])
+
+    tasks, global_map = build_mnist_cil_tasks(
+        test_transform = test_transform,
+        train_transform = train_transform,
+        root = "./data",
+        use_local_labels = False
+    )
+
+    print("Dropped classes:", DROPPED)
+    print("Task definition:")
+    for task in tasks:
+        print(
+            f"Task: {task.task_id}: classes = {task.classes}, "
+            f"global_map = {task.class_to_global_label}, "
+            f"local_map = {task.class_to_local_label}, "
+            f"train_size = {len(task.train)}, test_size = {len(task.test)}"
+        )
+
+    print("Global label map:", global_map)

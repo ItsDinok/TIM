@@ -80,7 +80,7 @@ class TaskEstimationGate(nn.Module):
         out = self.fc(out)
         return out
 
-    def expand_output_layer(self, _classes):
+    def expand_output_layer(self, n_new_classes):
         old_linear = self.fc
         in_features = old_linear.in_features
         out_features = old_linear.out_features
