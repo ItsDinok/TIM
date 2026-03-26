@@ -117,7 +117,7 @@ def evaluate_teg(teg, dataloader, device = "cuda"):
     return accuracy
             
 
-def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
+def task_estimation_gate(train_data, test_data, tasks = 10, epochs = 30, device = "cuda"):
     model = TaskEstimationGate(BasicBlock, [6, 6, 6], num_tasks = tasks).to(device)
 
     trainloader = DataLoader(train_data, batch_size = 512, shuffle = True, num_workers = 4, pin_memory = True)
@@ -127,12 +127,15 @@ def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
     print("Training task estimation gate")
     
     optimiser = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimiser, max_lr=0.1,
-        steps_per_epoch = steps_per_epoch, epochs = 200)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimiser,
+        max_lr=0.1,
+        steps_per_epoch = steps_per_epoch,
+        epochs = 200)
     criterion = nn.CrossEntropyLoss()
     
     # Train for 200 epochs on this task
-    for epoch in range(200):
+    for epoch in range(epochs):
         model.train()
         for inputs, targets in trainloader:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -143,7 +146,7 @@ def task_estimation_gate(train_data, test_data, tasks = 10, device = "cuda"):
             loss.backward()
             optimiser.step()
             scheduler.step()
-        print(f"Completed epoch {epoch} out of 200.")
+        print(f"Completed epoch {epoch + 1} out of {epochs}.")
 
     print("Task estimation gate trained")
     print("TEG accuracy:", evaluate_teg(model, testloader)) 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Sequence
 import torch
-from torch.utils.data import Dataset, Subset
+from torch.utils.data import Dataset, Subset, ConcatDataset
 from torchvision import datasets, transforms
 
 TASKS: Dict[int, List[int]] = {
@@ -12,6 +12,32 @@ TASKS: Dict[int, List[int]] = {
 }
 
 DROPPED = {1}
+
+class MultiTaskDataset(Dataset):
+    """
+    Wraps a base dataset for multi-task learning.
+    - Returns image
+    - Returns original class label
+    - Returns task identity
+    """
+
+    def __init__(self, task_dataset: Dataset, task_id: int, label_map: Dict[int, int] = None):
+        self.task_dataset = task_dataset
+        self.task_id = task_id
+        self.label_map = label_map
+
+    def __len__(self):
+        return len(self.task_dataset)
+
+    def __getitem__(self, idx):
+        x, local_label = self.task_dataset[idx]
+        # Map back to global or original label if needed
+        if self.label_map is not None:
+            class_label = self.label_map[self.task_dataset.classes[local_label]]
+        else:
+            class_label = self.task_dataset.classes[local_label]
+        return x, class_label, self.task_id
+
 
 @dataclass
 class TaskDatasetBundle:
@@ -34,6 +60,7 @@ class RemappedSubset(Dataset):
         self.base_dataset = base_dataset
         self.indices = indices
         self.label_map = label_map
+        self.dataset = self.base_dataset
 
     def __len__(self):
         return len(self.indices)
@@ -41,6 +68,83 @@ class RemappedSubset(Dataset):
     def __getitem__(self, idx: int):
         x, y = self.base_dataset[self.indices[idx]]
         return x, self.label_map[int(y)]
+
+
+class FilteredTaskDataset(Dataset):
+    """
+    Dataset for one task.
+    Keeps only the task's digit classes and remaps them to local labels
+    Example:
+        task classes [6, 9. 0] -> labels {6:0, 9:1, 0:2}
+    """
+    def __init__(self, base_dataset: Dataset, classes: Sequence[int]):
+        self.base_dataset = base_dataset
+        self.classes = list(classes)
+        self.class_to_local = {c: i for i, c in enumerate(classes)}
+
+        targets = self._get_targets(base_dataset)
+        mask = torch.zeros(len(targets), dtype = torch.bool)
+        for c in self.classes:
+            mask |= (targets == c)
+
+        self.indices = torch.where(mask)[0].tolist()
+
+
+    def _get_targets(self, dataset: Dataset) -> torch.Tensor:
+        if hasattr(dataset, "targets"):
+            targets = dataset.targets
+            if isinstance(targets, torch.Tensor):
+                return targets
+            return torch.tensor(targets)
+        raise AttributeError("Dataset does not expose a .targets attribute.")
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        x, y = self.base_dataset[self.indices[idx]]
+        y = self.class_to_local[int(y)]
+        return x, y
+
+
+def fetch_transforms():
+    """
+    These have to adapt the training data to work with a ResNet, which expects three channels
+    I know a ResNet is overkill, but this is the very lowest test I can think of
+    """
+    transform_train = transforms.Compose([
+        transforms.Pad(2),
+        transforms.Grayscale(num_output_channels = 3),
+        transforms.RandomCrop(28, padding = 2),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307, 0.1307, 0.1307), (0.3081, 0.3081, 0.3081)),
+    ])
+
+    transform_test = transforms.Compose([
+        transforms.Pad(2),
+        transforms.Grayscale(num_output_channels = 3),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307, 0.1307, 0.1307), (0.3081, 0.3081, 0.3081)),
+    ])
+
+    return transform_train, transform_test
+
+
+class GateTaskDataset(Dataset):
+    """
+    Wraps a class dataset but replaces class label with task label
+    Used to train TEG modules
+    """
+    def __init__(self, task_dataset: Dataset, task_id: int):
+        self.task_dataset = task_dataset
+        self.task_id = task_id
+
+    def __len__(self):
+        return len(self.task_dataset)
+
+    def __getitem__(self, idx):
+        x, _ = self.task_dataset[idx]
+        return x, self.task_id
 
 
 def _get_targets(dataset: Dataset) -> torch.Tensor:
@@ -149,6 +253,49 @@ def build_mnist_cil_tasks(
         )
 
     return task_bundles, global_label_map
+
+
+def split_dataset_by_tasks(dataset: Dataset, task_definitions: Dict[int, List[int]] = TASKS):
+    """
+    Returns a list of datasets, one per task
+    Each task dataset uses local labels [0, 1, 2]
+    """
+    task_datasets = []
+    for task_id in sorted(task_definitions.keys()):
+        classes = task_definitions[task_id]
+        task_datasets.append(FilteredTaskDataset(dataset, classes))
+    return task_datasets
+
+
+def prepare_gate_datasets(task_datasets: Sequence[Dataset]):
+    """
+    Converts per-task class datasets into one dataset for gate training
+    Where labels are task identities instead of class identities.
+    """
+    gate_sets = []
+    for task_id, ds in enumerate(task_datasets):
+        gate_sets.append(GateTaskDataset(ds, task_id))
+    return ConcatDataset(gate_sets)
+
+
+def load_mnist(root: str = "./data"):
+    transform_train, transform_test = fetch_transforms()
+
+    trainset = datasets.MNIST(
+        root = root,
+        train = True,
+        download = True,
+        transform = transform_train
+    )
+
+    testset = datasets.MNIST(
+        root = root,
+        train = False,
+        download = True,
+        transform = transform_test
+    )
+
+    return trainset, testset
 
 
 def get_task_class_sequence() -> List[List[int]]:
