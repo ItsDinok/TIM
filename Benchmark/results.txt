@@ -20,3 +20,46 @@ Accuracy Matrix:
  [0.461  0.204  0.484  0.845  0.9765]]
 Backward Transfer (BwT): -0.40512499999999996
 Forward Transfer (FwT): 0.0
+
+
+
+
+
+TEG + RB:
+
+=== Training Task 1/3 ===
+Fallback used 0 times
+Skipped samples (label mismatch): 5
+Task 1 Eval - Loss: 0.5009, Top1: 94.73%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 11
+Task 2 Eval - Loss: 1.1282, Top1: 34.92%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 93
+Task 3 Eval - Loss: 1.1084, Top1: 38.71%, Top5: 100.00%
+
+=== Training Task 2/3 ===
+Fallback used 0 times
+Skipped samples (label mismatch): 5
+Task 1 Eval - Loss: 0.8382, Top1: 60.64%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 11
+Task 2 Eval - Loss: 0.7124, Top1: 69.13%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 93
+Task 3 Eval - Loss: 1.0939, Top1: 40.55%, Top5: 100.00%
+
+=== Training Task 3/3 ===
+Fallback used 0 times
+Skipped samples (label mismatch): 5
+Task 1 Eval - Loss: 1.3846, Top1: 42.28%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 11
+Task 2 Eval - Loss: 0.7905, Top1: 75.59%, Top5: 100.00%
+Fallback used 0 times
+Skipped samples (label mismatch): 93
+Task 3 Eval - Loss: 0.4900, Top1: 92.97%, Top5: 100.00%
+
+=== Continual Learning Metrics ===
+BWT: -22.9935
+FWT: 5.8592
