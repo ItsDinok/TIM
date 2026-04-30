@@ -28,7 +28,7 @@ def run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, 
         loader = DataLoader(test_tasks[task_id], batch_size = 512, shuffle = False)
         metrics = evaluate_teg_system(model, teg, loader, criterion, task_label_maps = task_label_maps, device = device)
 
-        baseline_accuracy[task_id] = metrics['top1_accuracy']
+        baseline_accuracy[task_id] = metrics['top1_acc']
 
     return baseline_accuracy
 
@@ -48,7 +48,7 @@ def remap_labels(targets, label_map, device):
     )
 
 
-def no_replay_batch_step(model, inputs, targets, task_id, label_map, device):
+def no_replay_batch_step(model, inputs, targets, task_ids, label_map, device):
     """
     Give the model data without using a replay buffer
     arguments:
@@ -64,9 +64,11 @@ def no_replay_batch_step(model, inputs, targets, task_id, label_map, device):
         - targets: predictions
     """
     inputs = inputs.to(device)
+    targets = targets.to(device)
     targets = remap_labels(targets, label_map, device)
 
-    outputs = model(inputs, task = str(task_id))
+    task_ids = [t.item() if isinstance(t, torch.Tensor) else t for t in task_ids]
+    outputs = forward_task_aware(model, inputs, task_ids)
     return outputs, targets
 
 
@@ -115,17 +117,23 @@ def sample_replay(replay_buffer, task_label_maps, device, max_samples = 32):
 
 # TODO: Figure out what the fuck this does and give it a docstring
 def forward_task_aware(model, batch_x, batch_task_ids):
-    outputs = []
+    # Group indicies by task
+    task_groups = {}
+    for i, tid in enumerate(batch_task_ids):
+        key = str(tid.item() if isinstance(tid, torch.Tensor) else tid)
+        task_groups.setdefault(key, []).append(i)
 
-    for i in range(len(batch_x)):
-        outputs.append(
-            model(
-                batch_x[i].unsqueeze(0),
-                task = str(batch_task_ids[i])
-            )
-        )
+    # Allocate output tensor
+    # Infer n_classes from forward pass
+    outputs = [None] * len(batch_task_ids)
 
-    return torch.cat(outputs, dim = 0)
+    for task_key, indices in task_groups.items():
+        x = torch.stack([batch_x[i] for i in indices])
+        out = model(x, task = task_key)
+        for j, original_idx in enumerate(indices):
+            outputs[original_idx] = out[j]
+
+    return torch.stack(outputs, dim = 0)
 
 
 def update_replay_buffer(train_task, buffer_size = 200):

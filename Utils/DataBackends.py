@@ -31,7 +31,6 @@ class MNISTBackend(DataBackend):
             root = root,
             train_transform = train_transform,
             test_transform = test_transform,
-            use_local_labels = False,
             download = True
         )
 

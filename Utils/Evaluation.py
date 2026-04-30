@@ -48,16 +48,16 @@ def _compute_metrics(outputs, targets, criterion, k):
     correct_top1 = 0
     correct_topn = 0
 
-    for output, target in zip(outputs, targets):
-        target_tensor = torch.tensor([target], device= output.device)
+    if outputs.dim() == 1:
+        outputs = outputs.unsqueeze(0)
+    if targets.dim() == 0:
+        targets = targets.unsqueeze(0)
+    targets = targets.long()
 
-        # Safety check
-        if target >= output.shape[1]:
-            skipped += 1
-            continue
+    # Clamp k to available classes
+    k = min(k, outputs.shape[1])
 
-        loss += criterion(output, target_tensor)
-        count += 1
+    loss = criterion(outputs, targets).item()
 
     # Accuracy
     _, predicted = outputs.max(1)
@@ -72,29 +72,6 @@ def _compute_metrics(outputs, targets, criterion, k):
         "loss": loss,
         "skipped": skipped
     }
-
-
-def _remap_label(true_label, pred_task, task_label_maps):
-    """
-    INTERNAL ONLY
-    Maps a global label into the local label space of the predicted task
-    If mapping fails or label is not in the predicted task it returns fallback
-    """
-
-    # If routing to fallback do not remap
-    if pred_task == "fallback":
-        return "fallback"
-
-    try:
-        task_id = int(pred_task)
-        label_map = task_label_maps[task_id]
-    except (ValueError, TypeError):
-        return "fallback"
-
-    if true_label not in label_map:
-        return "fallback"
-
-    return label_map[true_label]
 
 
 def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_maps, head_size = 5, confidence_threshold = 0.7):
@@ -127,8 +104,8 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
     fallback_count, skipped = 0, 0
     total = 0
 
-    with torch.no_grad():
-        for inputs, targets in dataloader:
+    with (torch.no_grad()):
+        for inputs, targets, task_ids in dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
 
             # Get task predictions from TEG
@@ -141,24 +118,33 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
                 pred_task = str(pred_tasks[i].item())
                 confidence = certainty[i].item()
                 true_label = targets[i].item()
+                true_task = task_ids[i].item()
+                true_task_str = str(true_task)
+
+                x = inputs[i].unsqueeze(0)
 
                 # Handle low confidence / fallbacks
                 if confidence <= confidence_threshold:
-                    pred_task = "fallback"
+                    # TODO: Implement this
                     fallback_count += 1
-
-                # Select correct label map
-                remapped_target = _remap_label(true_label, pred_task, task_label_maps)
-
-                # Forward pass
-                output = model(inputs[i].unsqueeze(0), task = pred_task)
+                    continue
+                    #output = model(x, task = "fallback")
+                    target = true_label
+                    fallback_count +=1
+                elif pred_task != true_task_str:
+                    skipped += 1
+                    continue
+                else:
+                    output = model(x, task = str(pred_task))
+                    label_map = task_label_maps[int(true_task)]
+                    if true_label not in label_map:
+                        skipped += 1
+                        continue
+                    target = label_map[true_label]
 
                 batch_outputs.append(output)
-                if remapped_target == "fallback":
-                    continue
-                batch_targets.append(remapped_target)
+                batch_targets.append(target)
 
-            # Skip empty batches safely
             if not batch_outputs:
                 continue
 
@@ -166,19 +152,16 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
             batch_targets = torch.tensor(batch_targets, device = device)
 
             total += batch_targets.size(0)
-            computed_metrics = _compute_metrics(outputs, batch_targets, criterion, head_size)
-            correct_top1 += computed_metrics["top1"]
-            correct_topn += computed_metrics["topn"]
-            running_loss += computed_metrics["loss"]
-            skipped += computed_metrics["skipped"]
+            computed = _compute_metrics(outputs, batch_targets, criterion, head_size)
+            correct_top1 += computed["top1"]
+            correct_topn += computed["topn"]
+            running_loss += computed["loss"]
 
-    # Final metrics
-    avg_loss = running_loss / max(1, total)
-    top1_accuracy = 100 * correct_top1 / max(1, total)
-    topn_accuracy = 100 * correct_topn / max(1, total)
+        avg_loss = running_loss / max(1, total)
+        top1_accuracy = 100 * correct_top1 / max(1, total)
+        topn_accuracy = 100 * correct_topn / max(1, total)
 
-    print(f"Fallback used: {fallback_count} times")
-    print(f"Skipped: {skipped} samples.")
+        print(f"Fallback head used: {fallback_count} | Skipped wrong task: {skipped}.")
 
     return {
         "loss": avg_loss,
@@ -188,7 +171,7 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
     }
 
 
-def evaluate_tasks(model, teg, test_tasks, criterion, task_label_maps = None):
+def evaluate_tasks(model, teg, test_tasks, criterion, device, task_label_maps = None):
     """
     Evaluates the model on all seen tasks
 
@@ -206,7 +189,7 @@ def evaluate_tasks(model, teg, test_tasks, criterion, task_label_maps = None):
     model.eval()
     task_results = {}
 
-    for eval_task_id in test_tasks:
+    for eval_task_id in range(len(test_tasks)):
         testloader = DataLoader(
             test_tasks[eval_task_id],
             batch_size = 512,
@@ -217,7 +200,7 @@ def evaluate_tasks(model, teg, test_tasks, criterion, task_label_maps = None):
         )
 
         if task_label_maps:
-            metrics = evaluate_teg_system(model, teg, testloader, criterion, model.device, task_label_maps)
+            metrics = evaluate_teg_system(model, teg, testloader, criterion, device, task_label_maps)
             print(f"Task {eval_task_id + 1} Eval - Loss: {metrics['loss']:.4f}, "
                   f"Top-1 Accuracy: {metrics['top1_acc']:.4f}, Top-N Accuracy: {metrics['topn_acc']:.4f}")
             task_results[eval_task_id] = float(metrics['top1_acc'])

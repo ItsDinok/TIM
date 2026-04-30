@@ -20,9 +20,10 @@ def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test
 
     for task_id, train_task in enumerate(train_tasks):
         print(f"Task {task_id + 1} / {n_tasks} (NO REPLAY)")
-        model.freeze_layers()
+        if task_id > 0:
+            model.freeze_layers()
 
-        loader = DataLoader(teg, batch_size = 64, shuffle = True, num_workers = 4, pin_memory = True)
+        loader = DataLoader(train_task, batch_size = 64, shuffle = True, num_workers = 4, pin_memory = True)
         optimiser = optim.SGD(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr = 0.1,
@@ -35,8 +36,8 @@ def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test
         for epoch in range(epochs):
             model.train()
 
-            for inputs, targets in loader:
-                outputs, targets = no_replay_batch_step(model, inputs, targets, task_id, label_map, device)
+            for inputs, targets, task_ids in loader:
+                outputs, targets = no_replay_batch_step(model, inputs, targets, task_ids, label_map, device)
                 loss = criterion(outputs, targets)
                 optimiser.zero_grad()
                 loss.backward()
@@ -45,11 +46,11 @@ def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test
             scheduler.step()
 
         results[task_id] = evaluate_tasks(
-            model, teg, test_tasks, criterion, task_label_maps = task_label_maps
+            model, teg, test_tasks, criterion, device, task_label_maps = task_label_maps
         )
 
     metrics = compute_cl_metrics(results, baseline_accuracy, n_tasks)
-    print(f"BWT: {metrics['BWT']} \n FWT: {metrics['FWT']}")
+    print(f"BWT: {metrics['bwt']} \n FWT: {metrics['fwt']}")
 
 
 def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps):
@@ -66,10 +67,8 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
     for task_id, train_task in enumerate(train_tasks):
         print(f"Task {task_id + 1} / {n_tasks} (REPLAY)")
         label_map = task_label_maps[task_id]
-        model.freeze_layers()
-
         if task_id > 0:
-            model.expand_fallback_head(len(label_map))
+            model.freeze_layers()
 
         trainloader = DataLoader(train_task, batch_size = 512, shuffle = True, num_workers = 4, pin_memory = True)
         optimiser = optim.SGD(
@@ -85,15 +84,14 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
         for epoch in range(epochs):
             model.train()
 
-            for inputs, targets in trainloader:
+            for inputs, targets, task_ids in trainloader:
                 batch_x, batch_y, batch_task_ids = [], [], []
 
                 # Current task data
                 for x, y in zip(inputs, targets):
                     y = int(y.item())
 
-                    if y not in label_map:
-                        continue
+                    assert y in label_map
 
                     batch_x.append(x)
                     batch_y.append(label_map[y])
@@ -134,7 +132,7 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
         replay_buffer[task_id] = update_replay_buffer(train_task, buffer_size = buffer_size_per_task)
 
         # Evaluate
-        task_results = evaluate_tasks(model, teg, test_tasks, criterion, task_label_maps = task_label_maps)
+        task_results = evaluate_tasks(model, teg, test_tasks, criterion, device, task_label_maps = task_label_maps)
         results[task_id] = task_results
 
     # Continual learning metrics

@@ -2,10 +2,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
-from torchvision import datasets, transforms
-from torch.utils.data import TensorDataset, Dataset, DataLoader, Subset
-import numpy as np
+from torch.utils.data import DataLoader
 
 """
 A task estimation gate is a system by which a classifier guesses which task a sample, or batch of samples belongs to.
@@ -70,7 +67,7 @@ class TaskEstimationGate(nn.Module):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
-    def forward(self, x, task = None):
+    def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
@@ -79,20 +76,6 @@ class TaskEstimationGate(nn.Module):
         out = torch.flatten(out, 1)
         out = self.fc(out)
         return out
-
-    def expand_output_layer(self, n_new_classes):
-        old_linear = self.fc
-        in_features = old_linear.in_features
-        out_features = old_linear.out_features
-
-        new_out_features = out_features + n_new_classes
-        new_linear = nn.Linear(in_features, new_out_features).to(old_linear.weight.device)
-
-        # Copy old weights
-        new_linear.weight.data[:out_features] = old_linear.weight.data
-        new_linear.bias.data[:out_features] = old_linear.bias.data
-
-        self.fc = new_linear
 
 
 def evaluate_teg(teg, dataloader, device = "cuda"):
@@ -131,7 +114,7 @@ def task_estimation_gate(train_data, test_data, tasks = 10, epochs = 30, device 
         optimiser,
         max_lr=0.1,
         steps_per_epoch = steps_per_epoch,
-        epochs = 200)
+        epochs = epochs)
     criterion = nn.CrossEntropyLoss()
     
     # Train for 200 epochs on this task
@@ -203,29 +186,20 @@ class GatedResNet(nn.Module):
         out = torch.flatten(out, 1)
 
         # Choose head
-        if task is None or task not in self.heads:
+        if task is None:
+            raise ValueError("Task must be provided")
+        if str(task) not in self.heads:
             task = "fallback"
-        return self.heads[str(task)](out)
+
+        # Force output shape
+        out = self.heads[str(task)](out)
+        return out
 
     def add_output_head(self, task, n_classes, in_features = None):
         if in_features is None:
             in_features = self.in_planes # Last layer output features
         device = next(self.parameters()).device
         self.heads[str(task)] = nn.Linear(in_features, n_classes).to(device)
-
-    def expand_fallback_head(self, n_classes):
-        old_linear = self.heads["fallback"]
-        in_features = old_linear.in_features
-        out_features = old_linear.out_features
-
-        new_out_features = out_features + n_classes
-        new_linear = nn.Linear(in_features, new_out_features).to(old_linear.weight.device)
-
-        # Copy old weights
-        new_linear.weight.data[:out_features] = old_linear.weight.data
-        new_linear.bias.data[:out_features] = old_linear.bias.data
-
-        self.heads["fallback"] = new_linear
 
     def freeze_layers(self, layers = None):
         if layers is None:

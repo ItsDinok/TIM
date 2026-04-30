@@ -34,7 +34,10 @@ def build_experiment(backend, root = "/.data", device = "cuda", classes_per_task
     gate_train = backend.prepare_gate(gate_train_tasks)
     gate_test = backend.prepare_gate(gate_test_tasks)
 
-    task_map = {str(i): classes_per_task for i in range(len(task_bundles))}
+    task_map = {
+        str(task.task_id) : len(task.classes)
+        for task in task_bundles
+    }
 
     # Construct models
     model = GatedResNet32(task_map).to(device)
@@ -60,7 +63,7 @@ def build_experiment(backend, root = "/.data", device = "cuda", classes_per_task
     }
 
 
-def _build_task_label_maps(train_tasks):
+def _build_task_label_maps(train_tasks, classes_per_task = 3):
     """
     INTERNAL ONLY
     Constructs the task label maps
@@ -70,10 +73,8 @@ def _build_task_label_maps(train_tasks):
     returns:
         - task_label_maps: a dictionary with tasks as keys and their corresponding labels
     """
-    task_label_maps = {}
-
-    for task_id, train_task in enumerate(train_tasks):
-        labels = sorted({int(y) for _, y in train_task})
-        task_label_maps[task_id] = {g: i for i, g in enumerate(labels)}
-
-    return task_label_maps
+    from get_mnist import TASKS
+    return {
+        task_id: {original_class: local_idx for local_idx, original_class in enumerate(TASKS[task_id])}
+        for task_id in range(len(train_tasks))
+    }

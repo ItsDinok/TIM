@@ -30,13 +30,8 @@ class MultiTaskDataset(Dataset):
         return len(self.task_dataset)
 
     def __getitem__(self, idx):
-        x, local_label = self.task_dataset[idx]
-        # Map back to global or original label if needed
-        if self.label_map is not None:
-            class_label = self.label_map[self.task_dataset.classes[local_label]]
-        else:
-            class_label = self.task_dataset.classes[local_label]
-        return x, class_label, self.task_id
+        x, y = self.task_dataset[idx]
+        return x, int(y), self.task_id
 
 
 @dataclass
@@ -45,8 +40,6 @@ class TaskDatasetBundle:
     train: Dataset
     test: Dataset
     classes: List[int]
-    class_to_global_label: Dict[int, int]
-    class_to_local_label: Dict[int, int]
 
 class RemappedSubset(Dataset):
     """
@@ -67,7 +60,7 @@ class RemappedSubset(Dataset):
 
     def __getitem__(self, idx: int):
         x, y = self.base_dataset[self.indices[idx]]
-        return x, self.label_map[int(y)]
+        return x, int(y)
 
 
 class FilteredTaskDataset(Dataset):
@@ -143,7 +136,7 @@ class GateTaskDataset(Dataset):
         return len(self.task_dataset)
 
     def __getitem__(self, idx):
-        x, _ = self.task_dataset[idx]
+        x = self.task_dataset[idx][0]
         return x, self.task_id
 
 
@@ -185,7 +178,6 @@ def _filter_indices_by_classes(dataset: Dataset, allowed_classes: List[int]) -> 
 
 def build_mnist_cil_tasks(
         root: str = "./data",
-        use_local_labels: bool = False,
         train_transform = None,
         test_transform = None,
         download: bool = True,
@@ -194,9 +186,6 @@ def build_mnist_cil_tasks(
     Build MNIST class-incrmeental learning tasks
     Args:
         root: dataset root directory
-        use_local_labels:
-            - False -> labels globally remapped across all kept classes
-            - True -> labels are local within each task
         train_transform: transform for train split
         test_transform: transform for test split
         download: whether to download MNIST if needed
@@ -231,24 +220,22 @@ def build_mnist_cil_tasks(
         train_indices = _filter_indices_by_classes(train_dataset, classes)
         test_indices = _filter_indices_by_classes(test_dataset, classes)
 
-        local_label_map = {original_class: i for i, original_class in enumerate(classes)}
+        task_train = MultiTaskDataset(
+            Subset(train_dataset, train_indices),
+            task_id = task_id
+        )
 
-        if use_local_labels:
-            label_map = local_label_map
-        else:
-            label_map = {c: global_label_map[c] for c in classes}
-
-        task_train = RemappedSubset(train_dataset, train_indices, label_map)
-        task_test = RemappedSubset(test_dataset, test_indices, label_map)
+        task_test = MultiTaskDataset(
+            Subset(test_dataset, test_indices),
+            task_id = task_id
+        )
 
         task_bundles.append(
             TaskDatasetBundle(
                 task_id = task_id,
                 train = task_train,
                 test = task_test,
-                classes = classes,
-                class_to_global_label = {c: global_label_map[c] for c in classes},
-                class_to_local_label = local_label_map
+                classes = classes
             )
         )
 
@@ -327,8 +314,7 @@ if __name__ == "__main__":
     tasks, global_map = build_mnist_cil_tasks(
         test_transform = test_transform,
         train_transform = train_transform,
-        root = "./data",
-        use_local_labels = False
+        root = "./data"
     )
 
     print("Dropped classes:", DROPPED)
@@ -336,8 +322,6 @@ if __name__ == "__main__":
     for task in tasks:
         print(
             f"Task: {task.task_id}: classes = {task.classes}, "
-            f"global_map = {task.class_to_global_label}, "
-            f"local_map = {task.class_to_local_label}, "
             f"train_size = {len(task.train)}, test_size = {len(task.test)}"
         )
 
