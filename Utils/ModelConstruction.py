@@ -59,7 +59,8 @@ def build_experiment(backend, root = "/.data", device = "cuda", classes_per_task
         "teg": teg,
         "train_tasks": train_tasks,
         "test_tasks": test_tasks,
-        "task_label_maps": task_label_maps
+        "task_label_maps": task_label_maps,
+        "global_label_map": global_map
     }
 
 

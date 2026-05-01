@@ -6,11 +6,9 @@ from Utils.DataBackends import MNISTBackend
 from Utils.Evaluation import *
 from Utils.ModelConstruction import *
 from Utils.TrainingUtils import *
+import plainmnistbenchmark
 
 # TODO: Write clear documentation
-# TODO!!!: Ensure TEG is actually doing TEG things and ISN'T AN ORACLE
-# TODO: TEG is predicting label not task. This needs to be fixed ASAP
-# TODO: This isn't actually doing what it should. Write down formally what it should do and get that working
 # TODO: Fix head size mismatch evaluation issue
 
 def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps):
@@ -85,6 +83,8 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
             model.train()
 
             for inputs, targets, task_ids in trainloader:
+                inputs = inputs.to(device)
+                targets = targets.to(device)
                 batch_x, batch_y, batch_task_ids = [], [], []
 
                 # Current task data
@@ -141,12 +141,12 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
 
 
 # TODO: Make config input for number of tasks: hardcoding a short-term solution
-def main(buffer = True):
+def main(buffer = 0):
     device = "cuda"
     backend = MNISTBackend()
     experiment = build_experiment(backend, root = "./data", device = device)
 
-    if buffer:
+    if buffer == 0:
         train_model(
             experiment["model"],
             experiment["teg"],
@@ -157,7 +157,7 @@ def main(buffer = True):
             test_tasks = experiment["test_tasks"],
             task_label_maps = experiment["task_label_maps"],
         )
-    else:
+    elif buffer == 1:
         train_model_no_replay(
         experiment["model"],
         experiment["teg"],
@@ -168,7 +168,19 @@ def main(buffer = True):
         test_tasks = experiment["test_tasks"],
         task_label_maps = experiment["task_label_maps"]
         )
+    else:
+        single_head_model = plainmnistbenchmark.ResNet32(num_classes=len(experiment["global_label_map"])).to(device)
+        plainmnistbenchmark.train_model_single_head(
+            single_head_model,
+            n_tasks=3,
+            epochs=50,
+            device=device,
+            train_tasks=experiment["train_tasks"],
+            test_tasks=experiment["test_tasks"],
+            global_label_map=experiment["global_label_map"],
+        )
+
 
 
 if __name__ == "__main__":
-    main(False)
+    main(2)

@@ -147,7 +147,7 @@ def update_replay_buffer(train_task, buffer_size = 200):
     returns:
         - samples: a list of samples
     """
-    samples = [(x, int(y)) for x, y in train_task]
+    samples = [(x, int(y)) for x, y, *_ in train_task]
 
     if len(samples) > buffer_size:
         samples = random.sample(samples, buffer_size)
