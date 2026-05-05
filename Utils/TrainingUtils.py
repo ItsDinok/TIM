@@ -4,8 +4,16 @@ from torch.utils.data import DataLoader
 import numpy as np
 import torch
 
-__all__ = ["run_baseline_evaluation", "remap_labels", "sample_replay", "forward_task_aware", "update_replay_buffer", "no_replay_batch_step"]
+__all__ = ["r_sample_replay", "run_baseline_evaluation", "remap_labels", "sample_replay", "forward_task_aware", "update_replay_buffer", "no_replay_batch_step"]
 # TODO: Make replay buffer a distinct and modular class
+
+
+def r_sample_replay(replay_buffer, max_samples, device):
+    samples = random.sample(list(replay_buffer), min(max_samples, len(replay_buffer)))
+    batch_x = torch.stack([x for x, y in samples]).to(device)
+    batch_y = torch.tensor([y for x, y in samples]).to(device)
+    return batch_x, batch_y
+
 
 def run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, device, n_tasks):
     """
