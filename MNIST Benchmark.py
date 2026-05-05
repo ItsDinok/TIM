@@ -10,6 +10,13 @@ import plainmnistbenchmark
 
 # TODO: Write clear documentation
 # TODO: Fix head size mismatch evaluation issue
+# TODO: Rework replay buffer
+# TODO: Clean results collection
+# TODO: Modularise some more
+# TODO: Allow for flag-based edits
+# ^ (Tasks, hyperparameters, etc)
+# TODO: Clean up todos
+# TODO: Work on the writeup while model trains
 
 def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps):
     results = {}
@@ -183,4 +190,4 @@ def main(buffer = 0):
 
 
 if __name__ == "__main__":
-    main(2)
+    main(0)

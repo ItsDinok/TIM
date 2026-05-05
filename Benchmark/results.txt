@@ -1,26 +1,28 @@
-Benchmark with knowledge distillation (LwF) and iCaRL:
+TEG + RB:
 
-========== RESULTS ==========
-Accuracy Matrix:
- [[0.9855 0.     0.     0.     0.    ]
- [0.926  0.753  0.     0.     0.    ]
- [0.8865 0.232  0.9265 0.     0.    ]
- [0.8505 0.162  0.422  0.979  0.    ]
- [0.469  0.2685 0.499  0.8625 0.9715]]
-Backward Transfer (BwT): -0.38625
-Forward Transfer (FwT): 0.0
-
-
-========== RESULTS ==========
-Accuracy Matrix:
- [[0.986  0.     0.     0.     0.    ]
- [0.919  0.718  0.     0.     0.    ]
- [0.913  0.2445 0.9295 0.     0.    ]
- [0.871  0.185  0.434  0.981  0.    ]
- [0.461  0.204  0.484  0.845  0.9765]]
-Backward Transfer (BwT): -0.40512499999999996
-Forward Transfer (FwT): 0.0
-
+Task 1 / 3 (REPLAY)
+Fallback head used: 27 | Skipped wrong task: 13.
+Task 1 Eval - Loss: 0.0006, Top-1 Accuracy: 99.9312, Top-N Accuracy: 100.0000
+Fallback head used: 29 | Skipped wrong task: 14.
+Task 2 Eval - Loss: 0.0023, Top-1 Accuracy: 34.8917, Top-N Accuracy: 100.0000
+Fallback head used: 33 | Skipped wrong task: 11.
+Task 3 Eval - Loss: 0.0023, Top-1 Accuracy: 32.4093, Top-N Accuracy: 100.0000
+Task 2 / 3 (REPLAY)
+Fallback head used: 27 | Skipped wrong task: 13.
+Task 1 Eval - Loss: 0.0007, Top-1 Accuracy: 97.9360, Top-N Accuracy: 100.0000
+Fallback head used: 29 | Skipped wrong task: 14.
+Task 2 Eval - Loss: 0.0006, Top-1 Accuracy: 99.6906, Top-N Accuracy: 100.0000
+Fallback head used: 33 | Skipped wrong task: 11.
+Task 3 Eval - Loss: 0.0023, Top-1 Accuracy: 23.0322, Top-N Accuracy: 100.0000
+Task 3 / 3 (REPLAY)
+Fallback head used: 27 | Skipped wrong task: 13.
+Task 1 Eval - Loss: 0.0008, Top-1 Accuracy: 95.8720, Top-N Accuracy: 100.0000
+Fallback head used: 29 | Skipped wrong task: 14.
+Task 2 Eval - Loss: 0.0008, Top-1 Accuracy: 95.9780, Top-N Accuracy: 100.0000
+Fallback head used: 33 | Skipped wrong task: 11.
+Task 3 Eval - Loss: 0.0007, Top-1 Accuracy: 99.5209, Top-N Accuracy: 100.0000
+BWT: -3.8858917729551976
+FWT: -3.3200264279305944
 
 
 
