@@ -100,6 +100,7 @@ def evaluate_teg(teg, dataloader, device = "cuda"):
     return accuracy
             
 
+# TODO: Modularise this
 def task_estimation_gate(train_data, test_data, tasks = 10, epochs = 30, device = "cuda"):
     model = TaskEstimationGate(BasicBlock, [6, 6, 6], num_tasks = tasks).to(device)
 

@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 from torch.utils.data import DataLoader
-
+from Components import DynamicReplayBuffer
 from Components.DynamicReplayBuffer import update_rotating_buffer, init_class_buffer
 from Utils.DataBackends import MNISTBackend
 from Utils.Evaluation import *
@@ -20,6 +20,7 @@ from collections import deque
 # ^ (Tasks, hyperparameters, etc)
 # TODO: Clean up todos
 # TODO: Work on the writeup while model trains
+# TODO: Make tasks less hardcoded
 
 def train_model_no_replay(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps):
     results = {}
@@ -113,7 +114,7 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
                         replay_buffer,
                         task_label_maps,
                         device = device,
-                        max_samples = 32
+                        max_samples = 100
                     )
 
                     batch_x.extend(rx)
@@ -200,7 +201,7 @@ def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks,
 
                 # Replay data
                 if replay_buffer:
-                    rx, ry = r_sample_replay(replay_buffer, max_samples=32, device=device)
+                    rx, ry = DynamicReplayBuffer.sample_replay(replay_buffer, max_samples=32, device=device)
 
                     batch_x.extend(rx)
                     batch_y.extend(ry)
