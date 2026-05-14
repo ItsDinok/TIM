@@ -74,3 +74,31 @@ Task 2 Eval (single head) - Top-1 Accuracy: 83.9092
 Task 3 Eval (single head) - Top-1 Accuracy: 99.9326
 BWT: -12.592504848529991
 FWT: -17.327235772357724
+
+
+
+Dynamic replay buffer + TEG
+
+Task 1 / 3 (DYNAMIC REPLAY)
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 1 Eval - Loss: 0.0033, Top-1 Accuracy: 99.5916, Top-N Accuracy: 99.9660
+Fallback head used: 20 | Skipped wrong task: 8.
+Task 2 Eval - Loss: 0.0064, Top-1 Accuracy: 58.6617, Top-N Accuracy: 99.5245
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 3 Eval - Loss: 0.0062, Top-1 Accuracy: 34.0548, Top-N Accuracy: 99.8985
+Task 2 / 3 (DYNAMIC REPLAY)
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 1 Eval - Loss: 0.0037, Top-1 Accuracy: 96.0517, Top-N Accuracy: 99.8639
+Fallback head used: 20 | Skipped wrong task: 8.
+Task 2 Eval - Loss: 0.0044, Top-1 Accuracy: 98.8791, Top-N Accuracy: 99.8641
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 3 Eval - Loss: 0.0063, Top-1 Accuracy: 34.0886, Top-N Accuracy: 99.8309
+Task 3 / 3 (DYNAMIC REPLAY)
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 1 Eval - Loss: 0.0047, Top-1 Accuracy: 53.6760, Top-N Accuracy: 99.9319
+Fallback head used: 20 | Skipped wrong task: 8.
+Task 2 Eval - Loss: 0.0053, Top-1 Accuracy: 79.9592, Top-N Accuracy: 99.5245
+Fallback head used: 11 | Skipped wrong task: 9.
+Task 3 Eval - Loss: 0.0046, Top-1 Accuracy: 99.4589, Top-N Accuracy: 99.7295
+BWT: -32.41771289623228
+FWT: 11.413043478260871
