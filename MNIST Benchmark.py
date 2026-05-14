@@ -151,18 +151,18 @@ def train_model(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, ta
     print(f"BWT: {metrics['bwt']} \nFWT: {metrics['fwt']}")
 
 
-def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps):
+def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks, test_tasks, task_label_maps, global_label_map):
     # State
     replay_buffer = init_class_buffer()
     results = {}
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # Baseline for FWT
-    baseline_accuracy = run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, device, n_tasks)
+    baseline_accuracy = run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, device, n_tasks, global_label_map)
 
     # Sequential training
     for task_id, train_task in enumerate(train_tasks):
-        print(f"Task {task_id + 1} / {n_tasks} (REPLAY)")
+        print(f"Task {task_id + 1} / {n_tasks} (DYNAMIC REPLAY)")
         label_map = task_label_maps[task_id]
         if task_id > 0:
             model.freeze_layers()
@@ -174,10 +174,9 @@ def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks,
             momentum=0.9,
             weight_decay=5e-4,
         )
-
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=epochs)
 
-        # Train loop
+        # Train loop — buffer is NOT updated here, only old tasks are replayed
         for epoch in range(epochs):
             model.train()
 
@@ -189,35 +188,27 @@ def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks,
                 # Current task data
                 for x, y in zip(inputs, targets):
                     y = int(y.item())
-
                     assert y in label_map
-
                     batch_x.append(x)
                     batch_y.append(label_map[y])
                     batch_task_ids.append(task_id)
 
-                # Update rotating buffer with current batch
-                update_rotating_buffer(replay_buffer, inputs, targets, label_map)
-
-                # Replay data
+                # Replay old tasks (buffer only contains completed tasks)
                 if replay_buffer:
-                    rx, ry = DynamicReplayBuffer.sample_replay(replay_buffer, max_samples=32, device=device)
-
+                    rx, ry, rtask_ids = DynamicReplayBuffer.sample_replay(
+                        replay_buffer, max_samples=32, device=device
+                    )
                     batch_x.extend(rx)
                     batch_y.extend(ry)
-                    batch_task_ids.extend([task_id] * len(rx))
+                    batch_task_ids.extend(rtask_ids)  # correct task IDs for head routing
 
-                # Skip empty batch
                 if len(batch_x) == 0:
                     continue
 
                 batch_x = torch.stack(batch_x).to(device)
                 batch_y = torch.tensor(batch_y, device=device)
 
-                # Task aware forward pass
                 outputs = forward_task_aware(model, batch_x, batch_task_ids)
-
-                # Loss + optim step
                 loss = criterion(outputs, batch_y)
                 optimiser.zero_grad()
                 loss.backward()
@@ -225,11 +216,18 @@ def train_model_dynamic_buffer(model, teg, n_tasks, epochs, device, train_tasks,
 
             scheduler.step()
 
+        # Update buffer AFTER training on this task is complete,
+        # so current task data never contaminates replay during its own training
+        for inputs, targets, _ in DataLoader(train_task, batch_size=512, shuffle=False, num_workers=4):
+            for x, y in zip(inputs, targets):
+                y_int = int(y.item())
+                y_mapped = label_map[y_int]
+                replay_buffer[y_mapped].append((x.cpu(), y_mapped, task_id))
+
         # Evaluate
-        task_results = evaluate_tasks(model, teg, test_tasks, criterion, device, task_label_maps=task_label_maps)
+        task_results = evaluate_tasks(model, teg, test_tasks, criterion, device, global_label_map=global_label_map, task_label_maps=task_label_maps)
         results[task_id] = task_results
 
-    # Continual learning metrics
     metrics = compute_cl_metrics(results, baseline_accuracy, n_tasks)
     print(f"BWT: {metrics['bwt']} \nFWT: {metrics['fwt']}")
 
@@ -282,7 +280,8 @@ def main(buffer = 0):
             device = device,
             train_tasks = experiment["train_tasks"],
             test_tasks = experiment["test_tasks"],
-            task_label_maps = experiment["task_label_maps"]
+            task_label_maps = experiment["task_label_maps"],
+            global_label_map = experiment["global_label_map"]
         )
 
 

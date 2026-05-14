@@ -23,6 +23,9 @@ def sample_replay(replay_buffer, max_samples, device):
 
     random.shuffle(samples)
     samples = samples[:max_samples]
-    batch_x = torch.stack([x[0] for x in samples]).to(device)
-    batch_y = torch.tensor([x[1] for x in samples], device=device)
-    return batch_x, batch_y
+
+    batch_x = torch.stack([s[0] for s in samples]).to(device)
+    batch_y = torch.tensor([s[1] for s in samples], device=device)
+    batch_task_ids = [s[2] for s in samples]  # preserve original task provenance
+
+    return batch_x, batch_y, batch_task_ids

@@ -15,7 +15,7 @@ def r_sample_replay(replay_buffer, max_samples, device):
     return batch_x, batch_y
 
 
-def run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, device, n_tasks):
+def run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, device, n_tasks, global_label_map):
     """
     Runs the baseline evaluation for a model. Used in FWT
     arguments:
@@ -34,7 +34,7 @@ def run_baseline_evaluation(model, teg, test_tasks, task_label_maps, criterion, 
 
     for task_id in range(n_tasks):
         loader = DataLoader(test_tasks[task_id], batch_size = 512, shuffle = False)
-        metrics = evaluate_teg_system(model, teg, loader, criterion, task_label_maps = task_label_maps, device = device)
+        metrics = evaluate_teg_system(model, teg, loader, criterion, task_label_maps = task_label_maps, device = device, global_label_map=global_label_map)
 
         baseline_accuracy[task_id] = metrics['top1_acc']
 

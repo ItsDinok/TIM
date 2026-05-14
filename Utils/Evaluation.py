@@ -74,7 +74,7 @@ def _compute_metrics(outputs, targets, criterion, k):
     }
 
 
-def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_maps, head_size = 5, confidence_threshold = 0.7):
+def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_maps, global_label_map, head_size = 5, confidence_threshold = 0.7):
     """
     This function evaluates the performance of a TEG-enabled system over multiple tasks
 
@@ -98,70 +98,76 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
     teg.eval()
     model.eval()
 
-    # Initial state
     running_loss = 0.0
     correct_top1, correct_topn = 0, 0
     fallback_count, skipped = 0, 0
     total = 0
 
-    with (torch.no_grad()):
+    with torch.no_grad():
         for inputs, targets, task_ids in dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
-
-            # Get task predictions from TEG
             certainty, pred_tasks = _get_task_predictions(teg, inputs)
 
-            batch_outputs, batch_targets = [], []
+            # Separate buckets for task-routed and fallback-routed samples
+            task_outputs, task_targets = [], []
+            fallback_outputs, fallback_targets = [], []
 
-            # Process each sample
             for i in range(inputs.size(0)):
                 pred_task = str(pred_tasks[i].item())
                 confidence = certainty[i].item()
                 true_label = targets[i].item()
                 true_task = task_ids[i].item()
                 true_task_str = str(true_task)
-
                 x = inputs[i].unsqueeze(0)
 
-                # Handle low confidence / fallbacks
                 if confidence <= confidence_threshold:
-                    # TODO: Implement this
+                    output = model(x, task="fallback")
+                    if true_label not in global_label_map:
+                        skipped += 1
+                        continue
+                    fallback_outputs.append(output)
+                    fallback_targets.append(global_label_map[true_label])
                     fallback_count += 1
-                    continue
-                    #output = model(x, task = "fallback")
-                    target = true_label
-                    fallback_count +=1
+
                 elif pred_task != true_task_str:
                     skipped += 1
                     continue
+
                 else:
-                    output = model(x, task = str(pred_task))
                     label_map = task_label_maps[int(true_task)]
                     if true_label not in label_map:
                         skipped += 1
                         continue
-                    target = label_map[true_label]
+                    output = model(x, task=pred_task)
+                    task_outputs.append(output)
+                    task_targets.append(label_map[true_label])
 
-                batch_outputs.append(output)
-                batch_targets.append(target)
+            # Evaluate task-routed samples
+            if task_outputs:
+                outputs = torch.cat(task_outputs, dim=0)
+                tgts = torch.tensor(task_targets, device=device)
+                total += tgts.size(0)
+                computed = _compute_metrics(outputs, tgts, criterion, head_size)
+                correct_top1 += computed["top1"]
+                correct_topn += computed["topn"]
+                running_loss += computed["loss"]
 
-            if not batch_outputs:
-                continue
+            # Evaluate fallback-routed samples separately
+            if fallback_outputs:
+                fb_outputs = torch.cat(fallback_outputs, dim=0)
+                fb_targets = torch.tensor(fallback_targets, device=device)
+                total += fb_targets.size(0)
+                # Clamp k to fallback head size
+                fb_k = min(head_size, fb_outputs.shape[1])
+                computed = _compute_metrics(fb_outputs, fb_targets, criterion, fb_k)
+                correct_top1 += computed["top1"]
+                correct_topn += computed["topn"]
+                running_loss += computed["loss"]
 
-            outputs = torch.cat(batch_outputs, dim = 0)
-            batch_targets = torch.tensor(batch_targets, device = device)
-
-            total += batch_targets.size(0)
-            computed = _compute_metrics(outputs, batch_targets, criterion, head_size)
-            correct_top1 += computed["top1"]
-            correct_topn += computed["topn"]
-            running_loss += computed["loss"]
-
-        avg_loss = running_loss / max(1, total)
-        top1_accuracy = 100 * correct_top1 / max(1, total)
-        topn_accuracy = 100 * correct_topn / max(1, total)
-
-        print(f"Fallback head used: {fallback_count} | Skipped wrong task: {skipped}.")
+    avg_loss = running_loss / max(1, total)
+    top1_accuracy = 100 * correct_top1 / max(1, total)
+    topn_accuracy = 100 * correct_topn / max(1, total)
+    print(f"Fallback head used: {fallback_count} | Skipped wrong task: {skipped}.")
 
     return {
         "loss": avg_loss,
@@ -171,7 +177,7 @@ def evaluate_teg_system(model, teg, dataloader, criterion, device, task_label_ma
     }
 
 
-def evaluate_tasks(model, teg, test_tasks, criterion, device, task_label_maps = None):
+def evaluate_tasks(model, teg, test_tasks, criterion, device, global_label_map, task_label_maps = None):
     """
     Evaluates the model on all seen tasks
 
@@ -200,7 +206,7 @@ def evaluate_tasks(model, teg, test_tasks, criterion, device, task_label_maps = 
         )
 
         if task_label_maps:
-            metrics = evaluate_teg_system(model, teg, testloader, criterion, device, task_label_maps)
+            metrics = evaluate_teg_system(model, teg, testloader, criterion, device, task_label_maps, global_label_map=global_label_map)
             print(f"Task {eval_task_id + 1} Eval - Loss: {metrics['loss']:.4f}, "
                   f"Top-1 Accuracy: {metrics['top1_acc']:.4f}, Top-N Accuracy: {metrics['topn_acc']:.4f}")
             task_results[eval_task_id] = float(metrics['top1_acc'])

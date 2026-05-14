@@ -145,7 +145,7 @@ def task_estimation_gate(train_data, test_data, tasks = 10, epochs = 30, device 
 # ================================================================================================================
 
 class GatedResNet(nn.Module):
-    def __init__(self, block, num_blocks, task_map = None, num_classes = 100):
+    def __init__(self, block, num_blocks, task_map = None, num_classes = 9):
         """
         task_map: dict mapping task names -> num classes
         num_classes: number of classes for fallback head
